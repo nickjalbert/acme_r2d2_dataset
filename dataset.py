@@ -1,5 +1,5 @@
 import agentos
 
 
-def ReverbDataset(agentos.Dataset):
+class ReverbDataset(agentos.Dataset):
     pass
