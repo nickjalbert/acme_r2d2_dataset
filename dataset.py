@@ -28,8 +28,7 @@ class ReverbDataset(agentos.Dataset):
         self.shared_data["replay_period"] = 40
         self.shared_data["batch_size"] = 32
         self.shared_data["prefetch_size"] = tf.data.experimental.AUTOTUNE
-        PRIORITY_EXPONENT = 0.6
-        self.shared_data["priority_exponent"] = PRIORITY_EXPONENT
+        self.shared_data["priority_exponent"] = 0.6
         self.shared_data["max_replay_size"] = 500
 
         initial_state = self.shared_data["network"].initial_state(1)
@@ -38,7 +37,9 @@ class ReverbDataset(agentos.Dataset):
         }
         replay_table = reverb.Table(
             name=adders.DEFAULT_PRIORITY_TABLE,
-            sampler=reverb.selectors.Prioritized(PRIORITY_EXPONENT),
+            sampler=reverb.selectors.Prioritized(
+                self.shared_data["priority_exponent"]
+            ),
             remover=reverb.selectors.Fifo(),
             max_size=self.shared_data["max_replay_size"],
             rate_limiter=reverb.rate_limiters.MinSize(min_size_to_sample=1),
