@@ -1,0 +1,13 @@
+{
+    "global": {
+        "burn_in_length": 2,
+        "trace_length": 10,
+        "sequence_length": 13,
+        "replay_period": 40,
+        "batch_size": 32,
+        "priority_exponent": 0.6,
+        "max_replay_size": 500
+    },
+    "local": {
+    }
+}

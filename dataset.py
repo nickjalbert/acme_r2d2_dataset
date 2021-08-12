@@ -1,10 +1,12 @@
 # TODO - update reqs
 import agentos
+from agentos import global_settings
 from acme import datasets
 import tensorflow as tf
 from acme.tf import utils as tf2_utils
 from acme.adders import reverb as adders
 import reverb
+import numpy as np
 
 
 from dm_env import TimeStep
@@ -18,19 +20,6 @@ class ReverbDataset(agentos.Dataset):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        BURN_IN_LENGTH = 2
-        TRACE_LENGTH = 10
-        SEQUENCE_LENGTH = BURN_IN_LENGTH + TRACE_LENGTH + 1
-        # TODO - remove params that aren't actually shared
-        self.shared_data["burn_in_length"] = BURN_IN_LENGTH
-        self.shared_data["trace_length"] = TRACE_LENGTH
-        self.shared_data["sequence_length"] = SEQUENCE_LENGTH
-        self.shared_data["replay_period"] = 40
-        self.shared_data["batch_size"] = 32
-        self.shared_data["prefetch_size"] = tf.data.experimental.AUTOTUNE
-        self.shared_data["priority_exponent"] = 0.6
-        self.shared_data["max_replay_size"] = 500
-
         initial_state = self.shared_data["network"].initial_state(1)
         extra_spec = {
             "core_state": tf2_utils.squeeze_batch_dim(initial_state),
@@ -38,15 +27,15 @@ class ReverbDataset(agentos.Dataset):
         replay_table = reverb.Table(
             name=adders.DEFAULT_PRIORITY_TABLE,
             sampler=reverb.selectors.Prioritized(
-                self.shared_data["priority_exponent"]
+                global_settings.priority_exponent
             ),
             remover=reverb.selectors.Fifo(),
-            max_size=self.shared_data["max_replay_size"],
+            max_size=global_settings.max_replay_size,
             rate_limiter=reverb.rate_limiters.MinSize(min_size_to_sample=1),
             signature=adders.SequenceAdder.signature(
                 self.shared_data["environment_spec"],
                 extra_spec,
-                sequence_length=self.shared_data["sequence_length"],
+                sequence_length=global_settings.sequence_length,
             ),
         )
 
@@ -58,16 +47,16 @@ class ReverbDataset(agentos.Dataset):
         # Component to add things into replay.
         adder = adders.SequenceAdder(
             client=reverb.Client(self.shared_data["dataset_address"]),
-            period=self.shared_data["replay_period"],
-            sequence_length=self.shared_data["sequence_length"],
+            period=global_settings.replay_period,
+            sequence_length=global_settings.sequence_length,
         )
         self.shared_data["adder"] = adder  # TODO - remove adder from POLICY
 
         # The dataset object to learn from.
         dataset = datasets.make_reverb_dataset(
             server_address=address,
-            batch_size=self.shared_data["batch_size"],
-            prefetch_size=self.shared_data["prefetch_size"],
+            batch_size=global_settings.batch_size,
+            prefetch_size=tf.data.experimental.AUTOTUNE,
         )
 
         self.shared_data["dataset"] = dataset
@@ -82,14 +71,14 @@ class ReverbDataset(agentos.Dataset):
                 timestep = TimeStep(
                     StepType.LAST,
                     reward,
-                    self.shared_data["discount"],
+                    np.float32(global_settings.discount),
                     curr_obs,
                 )
             else:
                 timestep = TimeStep(
                     StepType.MID,
                     reward,
-                    self.shared_data["discount"],
+                    np.float32(global_settings.discount),
                     curr_obs,
                 )
 
