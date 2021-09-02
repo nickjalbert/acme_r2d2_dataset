@@ -1,6 +1,6 @@
 # TODO - update reqs
 import agentos
-from agentos import global_settings
+from agentos import parameters
 from acme import datasets
 import tensorflow as tf
 from acme.tf import utils as tf2_utils
@@ -26,16 +26,14 @@ class ReverbDataset(agentos.Dataset):
         }
         replay_table = reverb.Table(
             name=adders.DEFAULT_PRIORITY_TABLE,
-            sampler=reverb.selectors.Prioritized(
-                global_settings.priority_exponent
-            ),
+            sampler=reverb.selectors.Prioritized(parameters.priority_exponent),
             remover=reverb.selectors.Fifo(),
-            max_size=global_settings.max_replay_size,
+            max_size=parameters.max_replay_size,
             rate_limiter=reverb.rate_limiters.MinSize(min_size_to_sample=1),
             signature=adders.SequenceAdder.signature(
                 self.shared_data["environment_spec"],
                 extra_spec,
-                sequence_length=global_settings.sequence_length,
+                sequence_length=parameters.sequence_length,
             ),
         )
 
@@ -47,15 +45,15 @@ class ReverbDataset(agentos.Dataset):
         # Component to add things into replay.
         adder = adders.SequenceAdder(
             client=reverb.Client(self.shared_data["dataset_address"]),
-            period=global_settings.replay_period,
-            sequence_length=global_settings.sequence_length,
+            period=parameters.replay_period,
+            sequence_length=parameters.sequence_length,
         )
         self.shared_data["adder"] = adder  # TODO - remove adder from POLICY
 
         # The dataset object to learn from.
         dataset = datasets.make_reverb_dataset(
             server_address=address,
-            batch_size=global_settings.batch_size,
+            batch_size=parameters.batch_size,
             prefetch_size=tf.data.experimental.AUTOTUNE,
         )
 
@@ -71,14 +69,14 @@ class ReverbDataset(agentos.Dataset):
                 timestep = TimeStep(
                     StepType.LAST,
                     reward,
-                    np.float32(global_settings.discount),
+                    np.float32(parameters.discount),
                     curr_obs,
                 )
             else:
                 timestep = TimeStep(
                     StepType.MID,
                     reward,
-                    np.float32(global_settings.discount),
+                    np.float32(parameters.discount),
                     curr_obs,
                 )
 
