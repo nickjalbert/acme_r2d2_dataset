@@ -7,8 +7,6 @@ from acme.tf import utils as tf2_utils
 from acme.adders import reverb as adders
 import reverb
 import numpy as np
-
-
 from dm_env import TimeStep
 from dm_env import StepType
 
@@ -40,15 +38,15 @@ class ReverbDataset(agentos.Dataset):
         # NB - must save ref to server or it gets killed
         self.reverb_server = reverb.Server([replay_table], port=None)
         address = f"localhost:{self.reverb_server.port}"
-        self.shared_data["dataset_address"] = address
 
         # Component to add things into replay.
-        adder = adders.SequenceAdder(
-            client=reverb.Client(self.shared_data["dataset_address"]),
+        self.adder = adders.SequenceAdder(
+            client=reverb.Client(address),
             period=parameters.replay_period,
             sequence_length=parameters.sequence_length,
         )
-        self.shared_data["adder"] = adder  # TODO - remove adder from POLICY
+
+        self.tf_client = reverb.TFClient(address)
 
         # The dataset object to learn from.
         dataset = datasets.make_reverb_dataset(
@@ -56,14 +54,34 @@ class ReverbDataset(agentos.Dataset):
             batch_size=parameters.batch_size,
             prefetch_size=tf.data.experimental.AUTOTUNE,
         )
+        self.iterator = iter(dataset)
 
-        self.shared_data["dataset"] = dataset
+    def next(self, *args, **kwargs):
+        return next(self.iterator)
+
+    def update_priorities(self, extra, keys):
+        # Updated priorities are a mixture of max and mean sequence errors
+        abs_errors = tf.abs(extra.errors)
+        mean_priority = tf.reduce_mean(abs_errors, axis=0)
+        max_priority = tf.reduce_max(abs_errors, axis=0)
+        priorities = (
+            parameters.max_priority_weight * max_priority
+            + (1 - parameters.max_priority_weight) * mean_priority
+        )
+
+        # Compute priorities and add an op to update them on the reverb
+        # side.
+        self.tf_client.update_priorities(
+            table=adders.DEFAULT_PRIORITY_TABLE,
+            keys=keys,
+            priorities=tf.cast(priorities, tf.float64),
+        )
 
     # https://github.com/deepmind/acme/blob/master/acme/agents/tf/actors.py#L164
     def add(self, prev_obs, action, curr_obs, reward, done, info):
         if action is None:  # No action -> first step
             timestep = TimeStep(StepType.FIRST, None, None, curr_obs)
-            self.shared_data["adder"].add_first(timestep)
+            self.adder.add_first(timestep)
         else:
             if done:
                 timestep = TimeStep(
@@ -90,10 +108,8 @@ class ReverbDataset(agentos.Dataset):
                 numpy_state = tf2_utils.to_numpy_squeeze(
                     self.shared_data["_prev_state"]
                 )
-                self.shared_data["adder"].add(
-                    action, timestep, extras=(numpy_state,)
-                )
+                self.adder.add(action, timestep, extras=(numpy_state,))
 
             else:
-                # self.shared_data['adder'].add(action, timestep)
+                # self.adder.add(action, timestep)
                 raise Exception("Recurrent state not available")
