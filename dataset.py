@@ -113,3 +113,11 @@ class ReverbDataset(agentos.Dataset):
             else:
                 # self.adder.add(action, timestep)
                 raise Exception("Recurrent state not available")
+
+
+def run_tests():
+    pass
+
+
+if __name__ == "__main__":
+    run_tests()
